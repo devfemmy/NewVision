@@ -1,113 +1,165 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
-
-import React from 'react';
+import React, { useContext, useEffect, useRef } from 'react'
+import { Provider } from 'react-redux'
+import { Alert, Platform } from 'react-native'
+// import * as RNIap from 'react-native-iap'
+import SplashScreen from 'react-native-splash-screen'
+import messaging from '@react-native-firebase/messaging'
+import AppNavigator from './src/navigation/AppNavigator'
+import { AppContext, AppState } from './src/context/AppState'
+import { initTranslate } from './translate/translate'
+import 'react-native-gesture-handler'
+import { setInterceptors } from './src/api/client'
+import store from './src/redux/store'
+import Global from './Global'
 import {
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  useColorScheme,
-  View,
-} from 'react-native';
+    NotificationListener,
+    requestUserPermission,
+} from './utils/pushNotification'
+import { usePlatform } from './src/utils/usePlatform'
+import { deviceStorage } from './src/services/deviceStorage'
+import { iapSkus } from './src/services/iap'
+import { googleSignInInit } from './src/services/googleSignInInit'
+import axios from 'axios'
+import { GlobalStateProvider } from './src/context/GlobalStateProvider'
+import PushNotificationIOS from '@react-native-community/push-notification-ios'
+import PushNotification, { Importance } from 'react-native-push-notification'
 
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
-
-function Section({children, title}) {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
-          },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
-}
-
+initTranslate()
+setInterceptors(axios)
 function App() {
-  const isDarkMode = useColorScheme() === 'dark';
+    const { onLogout, lang } = useContext(AppContext)
+    const { isIOS } = usePlatform()
+    const purchaseUpdateSubscription = useRef(null)
+    const purchaseErrorSubscription = useRef(null)
+    useEffect(() => {
+        const createChannels = () => {
+            PushNotification.createChannel({
+                channelId: 'new-visions',
+                channelName: 'New Visions',
+                playSound: true,
+                soundName: 'default',
+                importance: Importance.HIGH,
+                vibrate: true,
+                allowWhileIdle: true,
+                isCritical: true,
+            })
+        }
+        createChannels()
+        SplashScreen.hide()
+        googleSignInInit()
+        requestUserPermission()
+        NotificationListener()
+        const unsubscribe = messaging().onMessage(async (remoteMessage) => {
+            Alert.alert(
+                JSON.stringify(remoteMessage?.notification?.title),
+                JSON.stringify(remoteMessage?.notification?.body)
+            )
+            console.log('handle in foreground', remoteMessage)
+            const { notification, messageId } = remoteMessage
 
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
-  };
+            if (Platform.OS == 'ios') {
+                PushNotificationIOS.addNotificationRequest({
+                    id: messageId,
+                    body: notification?.body,
+                    title: notification?.title,
+                    sound: 'default',
+                    playSound: true,
+                    vibrate: true,
+                    isCritical: true,
+                    allowWhileIdle: true,
+                    vibration: 300,
+                })
+            } else {
+                PushNotification.localNotification({
+                    channelId: 'new-visions',
+                    id: messageId,
+                    body: notification?.body,
+                    title: notification?.title,
+                    soundName: 'default',
+                    vibrate: true,
+                    playSound: true,
+                })
+            }
+        })
 
-  return (
-    <SafeAreaView style={backgroundStyle}>
-      <StatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={backgroundStyle.backgroundColor}
-      />
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={backgroundStyle}>
-        <Header />
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change thissssss
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
-        </View>
-      </ScrollView>
-    </SafeAreaView>
-  );
+        return unsubscribe
+    }, [])
+    const iapInit = async () => {
+        // try {
+        //     const res = (await RNIap?.initConnection?.()) || false
+        //     if (res) {
+        //         purchaseUpdateSubscription.current =
+        //             RNIap.purchaseUpdatedListener(async (purchase) => {
+        //                 const receipt = purchase.transactionReceipt
+        //                 if (receipt) {
+        //                     deviceStorage
+        //                         .getSavedDataFromDevice({
+        //                             key: 'subscriptionInfo',
+        //                         })
+        //                         .then((data) => {
+        //                             console.log('data', data)
+        //                         })
+        //                 } else {
+        //                     purchaseErrorSubscription.current =
+        //                         RNIap.purchaseErrorListener(
+        //                             (currentPurchaseError) => {
+        //                                 if (
+        //                                     currentPurchaseError?.code ===
+        //                                     'E_USER_CANCELLED'
+        //                                 ) {
+        //                                     // do nothing here
+        //                                 } else if (
+        //                                     currentPurchaseError?.code ===
+        //                                     'E_UNKNOWN'
+        //                                 ) {
+        //                                     // @todo
+        //                                 } else {
+        //                                     Alert.alert(
+        //                                         'Purchase error',
+        //                                         JSON.stringify(
+        //                                             currentPurchaseError?.message
+        //                                         )
+        //                                     )
+        //                                 }
+        //                             }
+        //                         )
+        //                 }
+        //             })
+        //         return
+        //     }
+        //     alert("Couldn't get in-app-purchase information")
+        // } catch {
+        //     alert('Fail to get in-app-purchase information')
+        // }
+    }
+    useEffect(() => {
+        if (isIOS) {
+            iapInit()
+        }
+        return () => {
+            if (purchaseUpdateSubscription && isIOS) {
+                // purchaseUpdateSubscription.remove();
+                // purchaseUpdateSubscription.current = null;
+            }
+            if (purchaseErrorSubscription && isIOS) {
+                // purchaseErrorSubscription.remove();
+                // purchaseErrorSubscription.current = null;
+            }
+        }
+    }, [isIOS])
+
+    useEffect(() => {
+        // if (isIOS) RNIap.getProducts(iapSkus)
+    }, [isIOS])
+    return (
+        <Provider store={store}>
+            <GlobalStateProvider>
+                <AppState>
+                    <AppNavigator />
+                </AppState>
+            </GlobalStateProvider>
+        </Provider>
+    )
 }
 
-const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-  },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
-  },
-  highlight: {
-    fontWeight: '700',
-  },
-});
-
-export default App;
+export default App
